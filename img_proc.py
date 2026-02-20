@@ -103,11 +103,30 @@ def getWallMaskSegFormer(img_rgb):
     model, processor = _get_segmentation_model()
     device = next(model.parameters()).device
 
+    # Get original dimensions
+    h_orig, w_orig = img_rgb.shape[:2]
+
     # Convert BGR/RGB to PIL
     img_pil = Image.fromarray(img_rgb.astype(np.uint8))
 
     # Process and run inference
-    inputs = processor(images=img_pil, return_tensors="pt")
+    # By default the processor resizes to 640x640. We can override this to get higher resolution logits!
+    # This fundamentally solves the "rounded corners" problem by avoiding low-res mask upscaling.
+    
+    # Calculate an optimal processing size that maintains aspect ratio but is higher resolution
+    # Let's cap at max 1024 for memory/speed reasons, but keep aspect ratio
+    max_size = 1024
+    scale = min(max_size / w_orig, max_size / h_orig)
+    if scale < 1.0:
+        proc_w, proc_h = int(w_orig * scale), int(h_orig * scale)
+    else:
+        proc_w, proc_h = w_orig, h_orig
+        
+    # Ensure dimensions are multiples of 32 for the model architecture
+    proc_w = (proc_w // 32) * 32
+    proc_h = (proc_h // 32) * 32
+    
+    inputs = processor(images=img_pil, return_tensors="pt", size={"height": proc_h, "width": proc_w})
     inputs = {k: v.to(device) for k, v in inputs.items()}
 
     with torch.no_grad():
@@ -123,33 +142,37 @@ def getWallMaskSegFormer(img_rgb):
         logits, size=(h_orig, w_orig), mode='bilinear', align_corners=False
     )
     
-    preds = logits_resized.argmax(dim=1).squeeze(0).cpu().numpy()
-
-    # Wall = class 0 in ADE20K
-    wall_mask = (preds == WALL_CLASS_ID).astype(np.float32)
+    # Use probability map instead of hard argmax for better edge filtering
+    probs = torch.nn.functional.softmax(logits_resized, dim=1).squeeze(0)
+    wall_prob = probs[WALL_CLASS_ID].cpu().numpy().astype(np.float32)
 
     # REFINEMENT: Use Guided Filter to align mask edges perfectly to the high-res image
     try:
         # Guided filter parameters
-        radius = 20
-        eps = 1e-4
+        # VERY tight radius (3-5) prevents rounding of sharp corners (like picture frames)
+        # Extremely small eps (1e-6) forces the mask to STRICTLY follow the edges of the guide image
+        radius = 4
+        eps = 1e-6
         
         # Guide image should be normalized [0, 1] float32
         guide = img_rgb.astype(np.float32) / 255.0
         
-        # Apply Guided Filter
+        # Apply Guided Filter on the probability map
         refined_mask = cv2.ximgproc.guidedFilter(
             guide=guide, 
-            src=wall_mask, 
+            src=wall_prob, 
             radius=radius, 
             eps=eps
         )
         
-        # Threshold back to binary
-        wall_mask_final = (refined_mask > 0.5).astype(np.uint8) * 255
+        # Sharpen the mask transitions to prevent halos/bleeding, while keeping slight anti-aliasing
+        # S-curve function to push values towards 0 or 1 aggressively
+        refined_mask = np.clip((refined_mask - 0.5) * 10.0 + 0.5, 0, 1)
+        
+        wall_mask_final = (refined_mask * 255.0).astype(np.uint8)
     except Exception as e:
         print(f"Guided filter failed, falling back to raw mask: {e}")
-        wall_mask_final = (wall_mask * 255).astype(np.uint8)
+        wall_mask_final = (wall_prob > 0.5).astype(np.uint8) * 255
 
     return wall_mask_final
 

@@ -91,10 +91,15 @@ def serve_public(filename):
     return send_from_directory('public', filename)
 
 if __name__ == '__main__':
-    print("Starting Wall Paint Visualizer server on http://localhost:8000")
+    print("=======================================")
+    print("Starting AI Wall Paint Visualizer Server")
+    print("=======================================")
     
-    # Run warmup in background thread to unblock the server starting up
-    print("Initializing model warmup in background...")
-    threading.Thread(target=img_proc.warmup_model, daemon=True).start()
+    # Run warmup synchronously so the server only starts accepting requests 
+    # when the model is 100% loaded and warmed up into GPU/CPU memory
+    print("Step 1/2: Loading and warming up SegFormer AI Model...")
+    img_proc.warmup_model()
     
-    app.run(host='0.0.0.0', port=8000, debug=True)
+    print("\nStep 2/2: Starting Web Server...")
+    print("Server ready! Open http://localhost:8000 in your browser.")
+    app.run(host='0.0.0.0', port=8000, debug=False)
