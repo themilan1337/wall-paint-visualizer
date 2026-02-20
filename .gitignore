@@ -51,10 +51,9 @@ public/images/*
 public/edited/*
 !public/edited/.gitkeep
 
-# Old files (deprecated)
-server.py
-img_proc.py
-color_database.py
+# Old files (deprecated, root-level only)
+/server.py
+/img_proc.py
 test_*.py
 templates/
 
