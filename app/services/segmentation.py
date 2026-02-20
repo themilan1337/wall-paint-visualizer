@@ -113,8 +113,10 @@ def get_wall_mask(img_rgb: np.ndarray) -> np.ndarray:
     img_pil = Image.fromarray(img_rgb.astype(np.uint8))
 
     # Calculate optimal processing size
-    # Use higher resolution for better quality, but cap for performance
-    max_size = 2048
+    # SegFormer B5 is trained on 640x640. Going too high (e.g. 2048) changes the 
+    # visual scale of textures, causing the model to hallucinate walls on ceilings.
+    # 1024 is a safe maximum that preserves edges but prevents scale hallucinations.
+    max_size = 1024
     scale = min(max_size / w_orig, max_size / h_orig)
     if scale < 1.0:
         proc_w, proc_h = int(w_orig * scale), int(h_orig * scale)
@@ -149,24 +151,32 @@ def get_wall_mask(img_rgb: np.ndarray) -> np.ndarray:
     preds = logits_resized.argmax(dim=1).squeeze(0).cpu().numpy()
     base_mask_uint8 = (preds == WALL_CLASS_ID).astype(np.uint8) * 255
 
-    # Clean up the mask using morphological operations
-    # Close small holes (false negatives on the wall)
-    kernel_close = np.ones((5, 5), np.uint8)
-    cleaned_mask = cv2.morphologyEx(base_mask_uint8, cv2.MORPH_CLOSE, kernel_close)
+    # Clean up the mask using Connected Components Analysis
+    # Walls are massive structures. We can safely remove any isolated blobs
+    # (hallucinations on the ceiling, furniture) that are smaller than 0.5% of the image.
+    num_labels, labels, stats, centroids = cv2.connectedComponentsWithStats(base_mask_uint8, connectivity=8)
     
-    # Slightly dilate the mask so it overlaps the foreground objects.
-    # This prevents "under-painting" (white halos) at the edges.
-    # The Guided Filter will snap it back exactly to the visible edges.
-    kernel_dilate = np.ones((3, 3), np.uint8)
-    cleaned_mask = cv2.dilate(cleaned_mask, kernel_dilate, iterations=2)
+    img_area = h_orig * w_orig
+    min_area = img_area * 0.005  # 0.5% minimum area
     
+    cleaned_mask = np.zeros_like(base_mask_uint8)
+    for i in range(1, num_labels): # Skip 0 (background)
+        if stats[i, cv2.CC_STAT_AREA] >= min_area:
+            cleaned_mask[labels == i] = 255
+            
+    # Close any small holes inside the legitimate wall components
+    kernel_close = np.ones((7, 7), np.uint8)
+    cleaned_mask = cv2.morphologyEx(cleaned_mask, cv2.MORPH_CLOSE, kernel_close)
+    
+    # We pass the cleaned mask exactly as is (no blind dilation) to the Guided Filter.
+    # This ensures no bleeding onto baseboards or molding.
     base_mask_f = cleaned_mask.astype(np.float32) / 255.0
 
     # Apply Guided Filter for edge refinement
     try:
-        # Use a smaller radius for a sharper, more precise edge alignment
-        # This prevents wide, blurry halos where the wall meets an object.
-        radius = 8
+        # We use a balanced radius (12) for the guided filter to perfectly
+        # align the upscaled edges with the physical edges in the high-res image.
+        radius = 12
         eps = 1e-5
 
         guide = img_rgb.astype(np.float32) / 255.0
