@@ -19,8 +19,8 @@ RUN apt-get update && apt-get install -y \
 # Copy requirements first for better caching
 COPY requirements.txt .
 
-# Install Python dependencies
-RUN pip install --no-cache-dir -r requirements.txt
+# Install Python dependencies (long timeout for slow VPS / large packages like torch)
+RUN pip install --no-cache-dir --default-timeout=600 -r requirements.txt
 
 # Copy application code
 COPY app/ ./app/
