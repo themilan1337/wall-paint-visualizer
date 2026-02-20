@@ -137,9 +137,9 @@ def process_image(input_path: str, output_path: str,
     # Get image hash for caching
     img_hash = get_image_hash(input_path)
 
-    # Try to get cached wall mask (include model name to invalidate old caches)
+    # Try to get cached wall mask (include model name and version to invalidate old caches)
     model_safe_name = settings.model_name.replace("/", "_")
-    cache_key = f"wall_mask_{model_safe_name}:{img_hash}"
+    cache_key = f"wall_mask_{model_safe_name}_v2:{img_hash}"
     wall_mask = cache.get(cache_key)
 
     if wall_mask is None:

@@ -32,6 +32,7 @@ RUN mkdir -p public/images public/edited public/patterns .cache/huggingface
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
+ENV PYTHONWARNINGS="ignore::FutureWarning"
 ENV HF_HOME=/app/.cache/huggingface
 ENV HUGGINGFACE_HUB_CACHE=/app/.cache/huggingface
 

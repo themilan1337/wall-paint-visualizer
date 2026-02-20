@@ -150,18 +150,24 @@ def get_wall_mask(img_rgb: np.ndarray) -> np.ndarray:
     base_mask_uint8 = (preds == WALL_CLASS_ID).astype(np.uint8) * 255
 
     # Clean up the mask using morphological operations
-    # Remove small noise (false positives on furniture) and close small holes
-    kernel = np.ones((7, 7), np.uint8)
-    cleaned_mask = cv2.morphologyEx(base_mask_uint8, cv2.MORPH_OPEN, kernel)
-    cleaned_mask = cv2.morphologyEx(cleaned_mask, cv2.MORPH_CLOSE, kernel)
+    # Close small holes (false negatives on the wall)
+    kernel_close = np.ones((5, 5), np.uint8)
+    cleaned_mask = cv2.morphologyEx(base_mask_uint8, cv2.MORPH_CLOSE, kernel_close)
+    
+    # Slightly dilate the mask so it overlaps the foreground objects.
+    # This prevents "under-painting" (white halos) at the edges.
+    # The Guided Filter will snap it back exactly to the visible edges.
+    kernel_dilate = np.ones((3, 3), np.uint8)
+    cleaned_mask = cv2.dilate(cleaned_mask, kernel_dilate, iterations=2)
     
     base_mask_f = cleaned_mask.astype(np.float32) / 255.0
 
     # Apply Guided Filter for edge refinement
     try:
-        # Use a larger radius for better edge alignment and smoother transitions
-        radius = 20
-        eps = 1e-4
+        # Use a smaller radius for a sharper, more precise edge alignment
+        # This prevents wide, blurry halos where the wall meets an object.
+        radius = 8
+        eps = 1e-5
 
         guide = img_rgb.astype(np.float32) / 255.0
 
