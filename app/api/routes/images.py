@@ -77,7 +77,15 @@ async def get_image(filename: str):
 
     - **filename**: Image filename
     """
-    filepath = os.path.join(settings.upload_folder, filename)
+    if os.path.isabs(filename) or ".." in filename:
+        raise HTTPException(status_code=400, detail="Invalid filename")
+        
+    upload_dir = os.path.realpath(settings.upload_folder)
+    filepath = os.path.realpath(os.path.join(upload_dir, filename))
+    
+    if not filepath.startswith(upload_dir):
+        raise HTTPException(status_code=400, detail="Invalid path")
+        
     if not os.path.exists(filepath):
         raise HTTPException(status_code=404, detail="Image not found")
 
@@ -91,7 +99,15 @@ async def get_edited_image(filename: str):
 
     - **filename**: Edited image filename
     """
-    filepath = os.path.join(settings.edited_folder, filename)
+    if os.path.isabs(filename) or ".." in filename:
+        raise HTTPException(status_code=400, detail="Invalid filename")
+        
+    edited_dir = os.path.realpath(settings.edited_folder)
+    filepath = os.path.realpath(os.path.join(edited_dir, filename))
+    
+    if not filepath.startswith(edited_dir):
+        raise HTTPException(status_code=400, detail="Invalid path")
+        
     if not os.path.exists(filepath):
         raise HTTPException(status_code=404, detail="Edited image not found")
 

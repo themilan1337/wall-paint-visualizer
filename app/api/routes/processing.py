@@ -34,8 +34,17 @@ async def process_wall_image(request: ProcessImageRequest):
             detail="Only one of 'color' or 'pattern' can be provided"
         )
 
+    # Secure path resolution to prevent path traversal
+    if os.path.isabs(request.image) or ".." in request.image:
+        raise HTTPException(status_code=400, detail="Invalid image filename")
+        
+    upload_dir = os.path.realpath(settings.upload_folder)
+    input_path = os.path.realpath(os.path.join(upload_dir, request.image))
+    
+    if not input_path.startswith(upload_dir):
+        raise HTTPException(status_code=400, detail="Invalid path")
+
     # Check if input image exists
-    input_path = os.path.join(settings.upload_folder, request.image)
     if not os.path.exists(input_path):
         raise HTTPException(status_code=404, detail="Image not found")
 
@@ -54,6 +63,8 @@ async def process_wall_image(request: ProcessImageRequest):
                 rgb_parts = [int(c.strip()) for c in request.color.split(',')]
                 if len(rgb_parts) != 3:
                     raise ValueError("Color must be 'R,G,B' format")
+                if any(c < 0 or c > 255 for c in rgb_parts):
+                    raise ValueError("RGB values must be between 0 and 255")
                 new_color = tuple(rgb_parts)
             except Exception as e:
                 raise HTTPException(
@@ -64,12 +75,22 @@ async def process_wall_image(request: ProcessImageRequest):
         # Get pattern path if provided
         pattern_path = None
         if request.pattern:
-            pattern_path = os.path.join(settings.patterns_folder, request.pattern)
+            if os.path.isabs(request.pattern) or ".." in request.pattern:
+                raise HTTPException(status_code=400, detail="Invalid pattern filename")
+                
+            patterns_dir = os.path.realpath(settings.patterns_folder)
+            pattern_path = os.path.realpath(os.path.join(patterns_dir, request.pattern))
+            
+            if not pattern_path.startswith(patterns_dir):
+                raise HTTPException(status_code=400, detail="Invalid pattern path")
+                
             if not os.path.exists(pattern_path):
                 raise HTTPException(status_code=404, detail="Pattern not found")
 
-        # Process image
-        _, processing_time = process_image(
+        # Process image in a thread pool to avoid blocking the async event loop
+        from fastapi.concurrency import run_in_threadpool
+        _, processing_time = await run_in_threadpool(
+            process_image,
             input_path,
             output_path,
             new_color=new_color,
