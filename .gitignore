@@ -1,6 +1,62 @@
-venv/
-.cache/
+# Python
 __pycache__/
-*.pyc
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environment
+venv/
+env/
+ENV/
+.venv
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*.sublime-*
+
+# OS
 .DS_Store
+Thumbs.db
+*.log
+
+# Environment
 .env
+
+# Cache
+.cache/
+*.pyc
+
+# Uploads
+public/images/*
+!public/images/.gitkeep
+public/edited/*
+!public/edited/.gitkeep
+
+# Old files (deprecated)
+server.py
+img_proc.py
+color_database.py
+test_*.py
+templates/
+
+# Docker
+.dockerignore
