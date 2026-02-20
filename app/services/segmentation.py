@@ -34,14 +34,19 @@ def get_segmentation_model():
 
         print(f"🤖 Loading SegFormer model ({model_name})...")
 
-        _segmentation_processor = SegformerImageProcessor.from_pretrained(
-            model_name,
-            token=hf_token
-        )
-        _segmentation_model = SegformerForSemanticSegmentation.from_pretrained(
-            model_name,
-            token=hf_token
-        )
+        import warnings
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", category=FutureWarning)
+            
+            _segmentation_processor = SegformerImageProcessor.from_pretrained(
+                model_name,
+                token=hf_token
+            )
+            _segmentation_model = SegformerForSemanticSegmentation.from_pretrained(
+                model_name,
+                token=hf_token
+            )
+        
         _segmentation_model.eval()
 
         # Use CUDA if available, else MPS (Apple Silicon), else CPU
@@ -109,7 +114,7 @@ def get_wall_mask(img_rgb: np.ndarray) -> np.ndarray:
 
     # Calculate optimal processing size
     # Use higher resolution for better quality, but cap for performance
-    max_size = 1024
+    max_size = 2048
     scale = min(max_size / w_orig, max_size / h_orig)
     if scale < 1.0:
         proc_w, proc_h = int(w_orig * scale), int(h_orig * scale)
@@ -139,30 +144,39 @@ def get_wall_mask(img_rgb: np.ndarray) -> np.ndarray:
         logits, size=(h_orig, w_orig), mode='bilinear', align_corners=False
     )
 
-    # Use probability map for smoother edges
-    probs = torch.nn.functional.softmax(logits_resized, dim=1).squeeze(0)
-    wall_prob = probs[WALL_CLASS_ID].cpu().numpy().astype(np.float32)
+    # Use argmax to ensure we only consider regions where "wall" is the most probable class
+    # This prevents color bleeding onto objects with low "wall" probability
+    preds = logits_resized.argmax(dim=1).squeeze(0).cpu().numpy()
+    base_mask_uint8 = (preds == WALL_CLASS_ID).astype(np.uint8) * 255
+
+    # Clean up the mask using morphological operations
+    # Remove small noise (false positives on furniture) and close small holes
+    kernel = np.ones((7, 7), np.uint8)
+    cleaned_mask = cv2.morphologyEx(base_mask_uint8, cv2.MORPH_OPEN, kernel)
+    cleaned_mask = cv2.morphologyEx(cleaned_mask, cv2.MORPH_CLOSE, kernel)
+    
+    base_mask_f = cleaned_mask.astype(np.float32) / 255.0
 
     # Apply Guided Filter for edge refinement
     try:
-        radius = 4
-        eps = 1e-6
+        # Use a larger radius for better edge alignment and smoother transitions
+        radius = 20
+        eps = 1e-4
 
         guide = img_rgb.astype(np.float32) / 255.0
 
         refined_mask = cv2.ximgproc.guidedFilter(
             guide=guide,
-            src=wall_prob,
+            src=base_mask_f,
             radius=radius,
             eps=eps
         )
 
-        # Sharpen mask transitions
-        refined_mask = np.clip((refined_mask - 0.5) * 10.0 + 0.5, 0, 1)
-
+        # Smooth and constrain values
+        refined_mask = np.clip(refined_mask, 0.0, 1.0)
         wall_mask_final = (refined_mask * 255.0).astype(np.uint8)
     except Exception as e:
         print(f"⚠ Guided filter failed, using raw mask: {e}")
-        wall_mask_final = (wall_prob > 0.5).astype(np.uint8) * 255
+        wall_mask_final = cleaned_mask
 
     return wall_mask_final
