@@ -60,6 +60,33 @@
             justify-content: center;
             box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
         }
+
+        .search-result-item {
+            padding: 12px;
+            cursor: pointer;
+            border-bottom: 1px solid #f0f0f0;
+            transition: background-color 0.15s;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .search-result-item:hover {
+            background-color: #f9fafb;
+        }
+
+        .search-result-item:last-child {
+            border-bottom: none;
+        }
+
+        .search-color-swatch {
+            width: 48px;
+            height: 48px;
+            border-radius: 8px;
+            border: 2px solid white;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            flex-shrink: 0;
+        }
     </style>
 </head>
 <body class="bg-gray-50 text-gray-800 font-sans">
@@ -99,6 +126,48 @@
                 <!-- Color Selection -->
                 <div>
                     <h2 class="text-lg font-semibold mb-3 border-b pb-2">2. Select Wall Color</h2>
+
+                    <!-- Color Search -->
+                    <div class="mb-4">
+                        <div class="relative">
+                            <input
+                                type="text"
+                                id="color-search"
+                                placeholder="Search by code (e.g., F001, F002...)"
+                                class="w-full px-4 py-2 pr-10 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                                autocomplete="off"
+                                oninput="handleColorSearch(event)"
+                                onfocus="handleColorSearch(event)"
+                            >
+                            <svg class="absolute right-3 top-3 w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+                            </svg>
+                        </div>
+
+                        <!-- Search Results Dropdown -->
+                        <div id="search-results" class="absolute z-50 mt-1 w-full max-w-md bg-white border border-gray-300 rounded-lg shadow-lg max-h-96 overflow-y-auto hidden">
+                            <!-- Results will be inserted here -->
+                        </div>
+                    </div>
+
+                    <!-- Selected Color Display -->
+                    <div id="selected-color-display" class="mb-4 p-3 bg-gray-50 rounded-lg border border-gray-200 hidden">
+                        <div class="flex items-center gap-3">
+                            <div id="selected-color-swatch" class="w-12 h-12 rounded-lg border-2 border-white shadow"></div>
+                            <div class="flex-1">
+                                <div class="font-semibold text-gray-800" id="selected-color-code">-</div>
+                                <div class="text-sm text-gray-500" id="selected-color-hex">-</div>
+                            </div>
+                            <button onclick="clearSelectedColor()" class="text-gray-400 hover:text-gray-600">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Quick Color Palette -->
+                    <div class="text-sm text-gray-500 mb-2">Quick Colors:</div>
                     <div class="flex flex-wrap gap-3" id="color-palette">
                         <!-- Predefined colors -->
                         <div class="color-swatch" style="background-color: rgb(220,180,170);" onclick="selectColor('220,180,170', this)"></div>
@@ -109,7 +178,7 @@
                         <div class="color-swatch" style="background-color: rgb(240,230,210);" onclick="selectColor('240,230,210', this)"></div>
                         <div class="color-swatch" style="background-color: rgb(215,225,235);" onclick="selectColor('215,225,235', this)"></div>
                         <div class="color-swatch" style="background-color: rgb(150,110,130);" onclick="selectColor('150,110,130', this)"></div>
-                        
+
                         <!-- Custom Color Picker -->
                         <div class="relative w-10 h-10 rounded-full border-2 border-dashed border-gray-400 flex items-center justify-center overflow-hidden cursor-pointer hover:border-gray-600 transition" title="Custom color">
                             <span class="text-gray-500 font-bold">+</span>
@@ -169,6 +238,8 @@
         let currentColor = null;
         let currentPattern = null;
         let isShowingOriginal = false;
+        let searchTimeout = null;
+        let selectedColorCode = null;
         
         function selectImage(imgName) {
             currentImage = imgName;
@@ -232,18 +303,22 @@
         function selectColor(rgbStr, element) {
             currentColor = rgbStr;
             currentPattern = null;
-            
+            selectedColorCode = null;
+
+            // Hide the selected color from search
+            document.getElementById('selected-color-display').classList.add('hidden');
+
             document.querySelectorAll('.color-swatch').forEach(s => s.classList.remove('active'));
             document.querySelectorAll('.thumbnail').forEach(t => {
                 if(t.parentElement.classList.contains('flex')) {
                     t.classList.remove('active', 'border-blue-500', 'border-2');
                 }
             });
-            
+
             if (element) {
                 element.classList.add('active');
             }
-            
+
             document.getElementById('process-btn').disabled = false;
         }
 
@@ -326,12 +401,104 @@
             }
         }
 
+        async function handleColorSearch(event) {
+            const query = event.target.value;
+            const resultsContainer = document.getElementById('search-results');
+
+            // Clear previous timeout
+            if (searchTimeout) {
+                clearTimeout(searchTimeout);
+            }
+
+            // If query is empty, hide results
+            if (!query.trim()) {
+                resultsContainer.classList.add('hidden');
+                return;
+            }
+
+            // Debounce search
+            searchTimeout = setTimeout(async () => {
+                try {
+                    const response = await fetch(`/search_colors?q=${encodeURIComponent(query)}&limit=50`);
+                    const data = await response.json();
+
+                    if (data.success && data.results.length > 0) {
+                        displaySearchResults(data.results);
+                        resultsContainer.classList.remove('hidden');
+                    } else {
+                        resultsContainer.innerHTML = '<div class="p-4 text-gray-500 text-sm">No colors found</div>';
+                        resultsContainer.classList.remove('hidden');
+                    }
+                } catch (error) {
+                    console.error('Search error:', error);
+                    resultsContainer.innerHTML = '<div class="p-4 text-red-500 text-sm">Search error</div>';
+                    resultsContainer.classList.remove('hidden');
+                }
+            }, 200);
+        }
+
+        function displaySearchResults(results) {
+            const resultsContainer = document.getElementById('search-results');
+            resultsContainer.innerHTML = results.map(color => `
+                <div class="search-result-item" onclick="selectColorFromSearch('${color.code}', '${color.hex}', '${color.rgb.join(',')}')">
+                    <div class="search-color-swatch" style="background-color: ${color.hex};"></div>
+                    <div class="flex-1">
+                        <div class="font-semibold text-gray-800">${color.code}</div>
+                        <div class="text-sm text-gray-500">${color.hex}</div>
+                        <div class="text-xs text-gray-400">RGB: ${color.rgb.join(', ')}</div>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function selectColorFromSearch(code, hex, rgb) {
+            selectedColorCode = code;
+            currentColor = rgb;
+            currentPattern = null;
+
+            // Update selected color display
+            const display = document.getElementById('selected-color-display');
+            const swatch = document.getElementById('selected-color-swatch');
+            const codeEl = document.getElementById('selected-color-code');
+            const hexEl = document.getElementById('selected-color-hex');
+
+            swatch.style.backgroundColor = hex;
+            codeEl.innerText = code;
+            hexEl.innerText = hex;
+            display.classList.remove('hidden');
+
+            // Hide search results
+            document.getElementById('search-results').classList.add('hidden');
+            document.getElementById('color-search').value = '';
+
+            // Clear other selections
+            document.querySelectorAll('.color-swatch').forEach(s => s.classList.remove('active'));
+            document.getElementById('process-btn').disabled = false;
+        }
+
+        function clearSelectedColor() {
+            selectedColorCode = null;
+            currentColor = null;
+            document.getElementById('selected-color-display').classList.add('hidden');
+            document.getElementById('process-btn').disabled = !currentPattern;
+        }
+
+        // Close search results when clicking outside
+        document.addEventListener('click', function(event) {
+            const searchInput = document.getElementById('color-search');
+            const searchResults = document.getElementById('search-results');
+
+            if (!searchInput.contains(event.target) && !searchResults.contains(event.target)) {
+                searchResults.classList.add('hidden');
+            }
+        });
+
         function toggleCompare() {
             const editedImg = document.getElementById('edited-image');
             const btn = document.getElementById('compare-btn');
-            
+
             isShowingOriginal = !isShowingOriginal;
-            
+
             if (isShowingOriginal) {
                 editedImg.style.opacity = 0;
                 btn.innerText = 'Show Edited';

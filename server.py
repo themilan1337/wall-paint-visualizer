@@ -4,6 +4,7 @@ import threading
 from flask import Flask, request, jsonify, render_template, send_from_directory
 from werkzeug.utils import secure_filename
 import img_proc
+from color_database import color_db
 
 app = Flask(__name__, static_folder='public', template_folder='templates')
 
@@ -90,16 +91,58 @@ def process_image():
 def serve_public(filename):
     return send_from_directory('public', filename)
 
+@app.route('/search_colors', methods=['GET'])
+def search_colors():
+    """
+    Поиск цветов по коду
+    Query params:
+        q - поисковый запрос (например "F00")
+        limit - максимальное количество результатов (по умолчанию 20)
+    """
+    query = request.args.get('q', '')
+    limit = int(request.args.get('limit', 20))
+
+    try:
+        results = color_db.search(query, limit=limit)
+        return jsonify({
+            'success': True,
+            'results': results,
+            'count': len(results),
+            'total': color_db.get_count()
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/get_color/<code>', methods=['GET'])
+def get_color(code):
+    """Получить конкретный цвет по коду"""
+    try:
+        color = color_db.get_by_code(code)
+        if color:
+            return jsonify({'success': True, 'color': color})
+        else:
+            return jsonify({'success': False, 'error': 'Color not found'}), 404
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 if __name__ == '__main__':
     print("=======================================")
     print("Starting AI Wall Paint Visualizer Server")
     print("=======================================")
-    
-    # Run warmup synchronously so the server only starts accepting requests 
+
+    # Run warmup synchronously so the server only starts accepting requests
     # when the model is 100% loaded and warmed up into GPU/CPU memory
-    print("Step 1/2: Loading and warming up SegFormer AI Model...")
+    print("Step 1/3: Loading color database...")
+    try:
+        color_db.load()
+        print(f"Successfully loaded {color_db.get_count()} colors from database")
+    except Exception as e:
+        print(f"Warning: Could not load color database: {e}")
+        print("Color search will not be available")
+
+    print("\nStep 2/3: Loading and warming up SegFormer AI Model...")
     img_proc.warmup_model()
-    
-    print("\nStep 2/2: Starting Web Server...")
+
+    print("\nStep 3/3: Starting Web Server...")
     print("Server ready! Open http://localhost:8000 in your browser.")
     app.run(host='0.0.0.0', port=8000, debug=False)
