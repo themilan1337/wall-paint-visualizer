@@ -70,7 +70,7 @@ async def list_images():
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/preload")
+@router.get("/preload/list")
 async def list_preload_images():
     """
     List preloaded demo images.
