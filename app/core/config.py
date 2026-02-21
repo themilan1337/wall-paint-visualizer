@@ -6,7 +6,11 @@ from functools import lru_cache
 
 class Settings(BaseSettings):
     """Application settings"""
-    model_config = ConfigDict(protected_namespaces=())
+    model_config = ConfigDict(
+        protected_namespaces=(),
+        env_file=".env",
+        case_sensitive=False,
+    )
 
     # API Settings
     app_name: str = "Wall Paint Visualizer API"
@@ -37,10 +41,6 @@ class Settings(BaseSettings):
     # AI Model Settings
     model_name: str = "nvidia/segformer-b4-finetuned-ade-512-512"
     device: str = "cpu"  # or "cuda" if GPU available
-
-    class Config:
-        env_file = ".env"
-        case_sensitive = False
 
 
 @lru_cache()
