@@ -180,3 +180,25 @@ def _process_image_impl(input_path: str, output_path: str,
     print(f"✓ Done! Processing time: {processing_time:.2f}s")
 
     return output_path, processing_time
+
+
+def preload_mask_for_image(img_path: str) -> bool:
+    """
+    Preload and cache wall mask for an image at startup.
+    When users later select this image, the mask will already be in cache = instant processing.
+    Returns True on success.
+    """
+    with _process_semaphore:
+        try:
+            img = read_image(img_path)
+            img_hash = get_image_hash(img_path)
+            model_safe_name = settings.model_name.replace("/", "_")
+            cache_key = f"wall_mask_{model_safe_name}_v3:{img_hash}"
+            if cache.get(cache_key) is not None:
+                return True  # already cached
+            wall_mask = get_wall_mask(img)
+            cache.set(cache_key, wall_mask, ttl=settings.mask_cache_ttl)
+            return True
+        except Exception as e:
+            print(f"⚠ Preload failed for {img_path}: {e}")
+            return False

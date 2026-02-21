@@ -7,6 +7,7 @@ from fastapi.staticfiles import StaticFiles
 from app.core.config import get_settings
 from app.core.cache import cache
 from app.services import color_db, warmup_model
+from app.services.preload import preload_images
 from app.api.routes import colors, images, processing
 from app.models.schemas import HealthResponse
 
@@ -41,6 +42,12 @@ async def lifespan(app: FastAPI):
         print("✓ Model ready")
     except Exception as e:
         print(f"⚠ Warning: Model warmup failed: {e}")
+
+    # Preload demo images (cache wall masks for instant processing)
+    try:
+        preload_images()
+    except Exception as e:
+        print(f"⚠ Warning: Preload failed: {e}")
 
     # Check Redis connection
     if cache.is_connected():

@@ -70,6 +70,28 @@ async def list_images():
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/preload")
+async def list_preload_images():
+    """
+    List preloaded demo images.
+    These images have wall masks cached at startup for instant color changes.
+    Use image path as "preload/{filename}" in process API.
+    """
+    try:
+        preload_dir = settings.preload_folder
+        if not os.path.isdir(preload_dir):
+            return []
+
+        images = [
+            f for f in os.listdir(preload_dir)
+            if allowed_file(f)
+        ]
+        images.sort()
+        return [{"filename": f, "path": f"preload/{f}"} for f in images]
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/{filename}")
 async def get_image(filename: str):
     """

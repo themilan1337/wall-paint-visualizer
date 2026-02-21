@@ -37,19 +37,29 @@ async def process_wall_image(request: ProcessImageRequest):
     # Secure path resolution to prevent path traversal
     if os.path.isabs(request.image) or ".." in request.image:
         raise HTTPException(status_code=400, detail="Invalid image filename")
-        
-    upload_dir = os.path.realpath(settings.upload_folder)
-    input_path = os.path.realpath(os.path.join(upload_dir, request.image))
-    
-    if not input_path.startswith(upload_dir):
-        raise HTTPException(status_code=400, detail="Invalid path")
+
+    # Resolve input path: support both uploads and preload images
+    if request.image.startswith("preload/"):
+        filename = request.image[8:]  # strip "preload/"
+        if "/" in filename or ".." in filename:
+            raise HTTPException(status_code=400, detail="Invalid preload filename")
+        preload_dir = os.path.realpath(settings.preload_folder)
+        input_path = os.path.realpath(os.path.join(preload_dir, filename))
+        if not input_path.startswith(preload_dir):
+            raise HTTPException(status_code=400, detail="Invalid path")
+    else:
+        upload_dir = os.path.realpath(settings.upload_folder)
+        input_path = os.path.realpath(os.path.join(upload_dir, request.image))
+        if not input_path.startswith(upload_dir):
+            raise HTTPException(status_code=400, detail="Invalid path")
 
     # Check if input image exists
     if not os.path.exists(input_path):
         raise HTTPException(status_code=404, detail="Image not found")
 
-    # Generate output filename
-    output_name = f"edited_{uuid.uuid4().hex[:8]}_{request.image}"
+    # Generate output filename (use base filename for preload)
+    base_name = request.image.replace("/", "_")
+    output_name = f"edited_{uuid.uuid4().hex[:8]}_{base_name}"
     output_path = os.path.join(settings.edited_folder, output_name)
 
     # Ensure output directory exists

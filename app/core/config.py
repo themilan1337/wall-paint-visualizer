@@ -33,6 +33,7 @@ class Settings(BaseSettings):
 
     # File Settings
     upload_folder: str = "public/images"
+    preload_folder: str = "public/images/preload"
     edited_folder: str = "public/edited"
     patterns_folder: str = "public/patterns"
     colors_file: str = "data/colors.json"
