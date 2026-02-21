@@ -115,6 +115,10 @@ def get_colored_image(img: np.ndarray, new_color: Optional[Tuple[int, int, int]]
 
 def merge_images(img: np.ndarray, colored_image: np.ndarray, wall_mask: np.ndarray) -> np.ndarray:
     """Apply new color/pattern only to wall pixels"""
+    # Ensure mask dimensions match the image (in case of cached older masks or downscaling)
+    if wall_mask.shape[:2] != img.shape[:2]:
+        wall_mask = cv2.resize(wall_mask, (img.shape[1], img.shape[0]), interpolation=cv2.INTER_NEAREST)
+
     mask_f = wall_mask.astype(np.float32) / 255.0
     if len(mask_f.shape) == 2:
         mask_f = cv2.merge([mask_f, mask_f, mask_f])
