@@ -109,14 +109,14 @@ def get_wall_mask(img_rgb: np.ndarray) -> np.ndarray:
 
     h_orig, w_orig = img_rgb.shape[:2]
 
-    # Convert to PIL
-    img_pil = Image.fromarray(img_rgb.astype(np.uint8))
+    # Convert to PIL (already uint8 from read_image)
+    img_pil = Image.fromarray(img_rgb)
 
     # Calculate optimal processing size
-    # SegFormer B5 is trained on 640x640. Going too high (e.g. 2048) changes the 
-    # visual scale of textures, causing the model to hallucinate walls on ceilings.
-    # 1024 is a safe maximum that preserves edges but prevents scale hallucinations.
-    max_size = 1024
+    # SegFormer is trained on 512x512. Going too high (e.g. 1024 or 2048) increases RAM usage 
+    # exponentially and causes the OS to kill the process (OOM) on weak VPS servers.
+    # 512 is the safest maximum that preserves enough edges for guided filtering.
+    max_size = 512
     scale = min(max_size / w_orig, max_size / h_orig)
     if scale < 1.0:
         proc_w, proc_h = int(w_orig * scale), int(h_orig * scale)
@@ -142,14 +142,32 @@ def get_wall_mask(img_rgb: np.ndarray) -> np.ndarray:
     # Get logits and resize to original size
     logits = outputs.logits
 
-    logits_resized = torch.nn.functional.interpolate(
-        logits, size=(h_orig, w_orig), mode='bilinear', align_corners=False
-    )
+    # VERY IMPORTANT: To avoid Out-Of-Memory (OOM) errors on large images,
+    # we DO NOT interpolate the entire 150-class logits tensor (which can take 7GB+ of RAM).
+    # Instead, we take the argmax at the low resolution first, create a 1-channel mask,
+    # and then interpolate only that 1-channel mask to the original size.
+    
+    # 1. Take argmax at low resolution
+    preds_low = logits.argmax(dim=1)  # Shape: [1, H_low, W_low]
+    
+    # 2. Create binary mask for wall class
+    wall_mask_low = (preds_low == WALL_CLASS_ID).float().unsqueeze(1)  # Shape: [1, 1, H_low, W_low]
+    
+    # Free memory
+    del outputs
+    del logits
+    del preds_low
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
 
-    # Use argmax to ensure we only consider regions where "wall" is the most probable class
-    # This prevents color bleeding onto objects with low "wall" probability
-    preds = logits_resized.argmax(dim=1).squeeze(0).cpu().numpy()
-    base_mask_uint8 = (preds == WALL_CLASS_ID).astype(np.uint8) * 255
+    # 3. Interpolate the 1-channel binary mask to original size
+    wall_mask_resized = torch.nn.functional.interpolate(
+        wall_mask_low, size=(h_orig, w_orig), mode='bilinear', align_corners=False
+    )
+    
+    # 4. Convert back to numpy and threshold
+    mask_np = wall_mask_resized.squeeze().cpu().numpy()
+    base_mask_uint8 = (mask_np > 0.5).astype(np.uint8) * 255
 
     # Clean up the mask using Connected Components Analysis
     # Walls are massive structures. We can safely remove any isolated blobs

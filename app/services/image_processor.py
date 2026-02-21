@@ -22,11 +22,19 @@ def get_image_hash(img_path: str) -> str:
         return hashlib.md5(f.read()).hexdigest()
 
 
-def read_image(img_path: str) -> np.ndarray:
-    """Read image and convert to RGB"""
+def read_image(img_path: str, max_dim: int = 1920) -> np.ndarray:
+    """Read image, convert to RGB, and resize if too large"""
     img = cv2.imread(img_path)
     if img is None:
         raise ValueError(f"Could not read image at {img_path}")
+    
+    # Downscale image if it's too large to prevent OOM
+    h, w = img.shape[:2]
+    if max(h, w) > max_dim:
+        scale = max_dim / max(h, w)
+        new_w, new_h = int(w * scale), int(h * scale)
+        img = cv2.resize(img, (new_w, new_h), interpolation=cv2.INTER_AREA)
+        
     return cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
 
 
