@@ -1,5 +1,5 @@
 """Pydantic schemas for API requests/responses"""
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from typing import List, Optional
 
 
@@ -50,6 +50,7 @@ class UploadResponse(BaseModel):
 
 class HealthResponse(BaseModel):
     """Health check response"""
+    model_config = ConfigDict(protected_namespaces=())
     status: str
     version: str
     redis_connected: bool

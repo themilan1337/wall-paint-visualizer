@@ -1,10 +1,12 @@
 """Application configuration"""
+from pydantic import ConfigDict
 from pydantic_settings import BaseSettings
 from functools import lru_cache
 
 
 class Settings(BaseSettings):
     """Application settings"""
+    model_config = ConfigDict(protected_namespaces=())
 
     # API Settings
     app_name: str = "Wall Paint Visualizer API"

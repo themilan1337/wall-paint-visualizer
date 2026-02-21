@@ -1,5 +1,6 @@
 """Image processing service with caching"""
 import os
+import threading
 import cv2
 import numpy as np
 import hashlib
@@ -10,6 +11,9 @@ from app.core.cache import cache
 from .segmentation import get_wall_mask
 
 settings = get_settings()
+
+# Limit to 1 concurrent SegFormer inference to prevent OOM on low-RAM servers (4 GB)
+_process_semaphore = threading.Semaphore(1)
 
 
 def get_image_hash(img_path: str) -> str:
@@ -129,6 +133,14 @@ def process_image(input_path: str, output_path: str,
     Returns:
         Tuple of (output_path, processing_time)
     """
+    with _process_semaphore:
+        return _process_image_impl(input_path, output_path, new_color, pattern_path)
+
+
+def _process_image_impl(input_path: str, output_path: str,
+                        new_color: Optional[Tuple[int, int, int]] = None,
+                        pattern_path: Optional[str] = None) -> Tuple[str, float]:
+    """Internal implementation (called under semaphore)"""
     start_time = datetime.now()
 
     # Read image
