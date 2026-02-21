@@ -34,7 +34,7 @@ services:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - REDIS_ENABLED=true
-      - MODEL_NAME=nvidia/segformer-b5-finetuned-ade-640-640
+      - MODEL_NAME=nvidia/segformer-b4-finetuned-ade-512-512
       - DEVICE=cpu
     depends_on:
       redis:

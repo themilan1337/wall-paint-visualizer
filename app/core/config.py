@@ -33,7 +33,7 @@ class Settings(BaseSettings):
     max_file_size: int = 16 * 1024 * 1024  # 16MB
 
     # AI Model Settings
-    model_name: str = "nvidia/segformer-b5-finetuned-ade-640-640"
+    model_name: str = "nvidia/segformer-b4-finetuned-ade-512-512"
     device: str = "cpu"  # or "cuda" if GPU available
 
     class Config:
