@@ -1,5 +1,7 @@
 """Preload wall masks for demo images at startup"""
+import gc
 import os
+import time
 from app.core.config import get_settings
 from app.services.image_processor import preload_mask_for_image
 
@@ -8,9 +10,9 @@ ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'webp'}
 
 def preload_images() -> int:
     """
-    Preload wall masks for all images in preload folder.
-    Masks are cached so when users select these images, processing is instant.
-    Returns number of successfully preloaded images.
+    Preload wall masks for demo images. Optimized for weak servers:
+    - Limits number of images (preload_max_images)
+    - GC + pause between images to avoid OOM
     """
     settings = get_settings()
     preload_dir = settings.preload_folder
@@ -25,19 +27,28 @@ def preload_images() -> int:
     ]
     files.sort()
 
+    max_n = settings.preload_max_images
+    if max_n > 0:
+        files = files[:max_n]
+
     if not files:
         print("⚠ No images in preload folder")
         return 0
 
-    print(f"\n🖼 Preloading {len(files)} demo images...")
+    print(f"\n🖼 Preloading {len(files)} demo images (background)...")
     success = 0
-    for filename in files:
+    for i, filename in enumerate(files):
         path = os.path.join(preload_dir, filename)
-        if preload_mask_for_image(path):
-            success += 1
-            print(f"  ✓ {filename}")
-        else:
-            print(f"  ✗ {filename}")
+        try:
+            if preload_mask_for_image(path):
+                success += 1
+                print(f"  ✓ {filename}")
+        except Exception as e:
+            print(f"  ✗ {filename}: {e}")
+        # Free memory and pause between images (gentle on weak servers)
+        gc.collect()
+        if i < len(files) - 1:
+            time.sleep(2)
 
     print(f"✓ Preloaded {success}/{len(files)} images")
     return success

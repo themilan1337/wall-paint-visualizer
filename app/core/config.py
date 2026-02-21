@@ -43,6 +43,10 @@ class Settings(BaseSettings):
     model_name: str = "nvidia/segformer-b4-finetuned-ade-512-512"
     device: str = "cpu"  # or "cuda" if GPU available
 
+    # Preload demo images (gentle on weak servers)
+    preload_enabled: bool = True
+    preload_max_images: int = 4  # Limit for low-RAM; 0 = no limit
+
 
 @lru_cache()
 def get_settings() -> Settings:

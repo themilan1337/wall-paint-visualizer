@@ -1,5 +1,6 @@
 """Main FastAPI application"""
 import os
+import threading
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -26,6 +27,7 @@ async def lifespan(app: FastAPI):
     os.makedirs(settings.upload_folder, exist_ok=True)
     os.makedirs(settings.edited_folder, exist_ok=True)
     os.makedirs(settings.patterns_folder, exist_ok=True)
+    os.makedirs(settings.preload_folder, exist_ok=True)
 
     # Load color database
     print("\n📚 Loading color database...")
@@ -43,11 +45,16 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         print(f"⚠ Warning: Model warmup failed: {e}")
 
-    # Preload demo images (cache wall masks for instant processing)
-    try:
-        preload_images()
-    except Exception as e:
-        print(f"⚠ Warning: Preload failed: {e}")
+    # Preload demo images in background - don't block server startup
+    # (Preload takes 1-3 min; if blocking, health check fails → container restarts)
+    if settings.preload_enabled:
+        def _run_preload():
+            try:
+                preload_images()
+            except Exception as e:
+                print(f"⚠ Warning: Preload failed: {e}")
+        threading.Thread(target=_run_preload, daemon=True).start()
+        print("🖼 Preload started in background")
 
     # Check Redis connection
     if cache.is_connected():
