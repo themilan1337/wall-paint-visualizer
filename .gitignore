@@ -46,8 +46,9 @@ Thumbs.db
 *.pyc
 
 # Uploads
-public/images/*
 !public/images/.gitkeep
+public/images/upload/*
+!public/images/upload/.gitkeep
 public/edited/*
 !public/edited/.gitkeep
 

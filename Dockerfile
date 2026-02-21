@@ -28,7 +28,7 @@ COPY data/ ./data/
 COPY public/ ./public/
 
 # Create necessary directories
-RUN mkdir -p public/images public/edited public/patterns .cache/huggingface
+RUN mkdir -p public/images/upload public/images/preload public/edited public/patterns .cache/huggingface
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1

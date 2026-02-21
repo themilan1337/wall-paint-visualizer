@@ -32,7 +32,7 @@ class Settings(BaseSettings):
     mask_cache_ttl: int = 7200  # 2 hours
 
     # File Settings
-    upload_folder: str = "public/images"
+    upload_folder: str = "public/images/upload"
     preload_folder: str = "public/images/preload"
     edited_folder: str = "public/edited"
     patterns_folder: str = "public/patterns"
